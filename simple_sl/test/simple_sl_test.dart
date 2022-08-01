@@ -69,6 +69,30 @@ void main() {
       expect(enUSGreeting, 'Hello World!');
     });
 
+    test('Register async creation with lazy=false and retrieve instance by get',
+        () async {
+      final stopwatch = Stopwatch()..start();
+      final milliseconds = 100;
+
+      //my way to simulate an async creation
+      await serviceLocator.registerAsync<String>(
+        () async => Future<String>.delayed(
+            Duration(milliseconds: milliseconds), () => 'Hello World!'),
+        lazy: false,
+      );
+      // Assure that is eager load
+      expect(
+          stopwatch.elapsed.inMilliseconds, greaterThanOrEqualTo(milliseconds));
+
+      stopwatch.reset();
+
+      var enUSGreeting = serviceLocator.get<String>();
+
+      //Assure that creation was triggered on getAsync call
+      expect(stopwatch.elapsed.inMilliseconds, lessThan(5));
+      expect(enUSGreeting, 'Hello World!');
+    });
+
     test('Replace sync creations', () {
       serviceLocator.register<String>(
         () => 'Hello World!',

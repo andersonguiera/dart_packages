@@ -107,7 +107,9 @@ class SimpleSL {
     if (_services[T] == null) {
       throw BadStateException('No instance register to ${T.toString()}');
     }
-    if (!_services[T]!.keys.contains(name) ||
+
+    //if instance doesnt exist and i cant create it
+    if (!_services[T]!.keys.contains(name) &&
         !_services[T]!.keys.contains('${name}_f')) {
       throw BadStateException('$name instance does not exist');
     }
@@ -135,7 +137,9 @@ class SimpleSL {
     if (_services[T] == null) {
       throw BadStateException('No instance register to ${T.toString()}');
     }
-    if (!_services[T]!.keys.contains(name) ||
+
+    //if instance doesnt exist and i cant create it
+    if (!_services[T]!.keys.contains(name) &&
         !_services[T]!.keys.contains('${name}_fa')) {
       throw BadStateException('$name instance does not exist');
     }
