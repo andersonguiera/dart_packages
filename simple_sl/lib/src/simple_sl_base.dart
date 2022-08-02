@@ -1,4 +1,5 @@
 import 'exceptions/bad_state_exception.dart';
+import 'dart:mirrors';
 
 /// This is a simple service locator
 class SimpleSL {
@@ -53,7 +54,20 @@ class SimpleSL {
   /// ```
   void register<T>(T Function() f,
       {bool lazy = true, String name = 'default'}) {
-    _services[T] = {...?_services[T], name: lazy ? null : f(), '${name}_f': f};
+//    _services[T] = {...?_services[T], name: lazy ? null : f(), '${name}_f': f};
+    _registerItern(T, name, f, lazy);
+  }
+
+  void _registerItern(Type type, String name, dynamic Function() f, bool lazy) {
+    _services[type] = {
+      ...?_services[type],
+      name: lazy ? null : f(),
+      '${name}_f': f
+    };
+  }
+
+  void _registerInstance(Type type, String name, dynamic instance) {
+    _services[type] = {...?_services[type], name: instance};
   }
 
   /// Register objects whose creation depends of asyncronous execution code.
@@ -118,6 +132,12 @@ class SimpleSL {
     return _services[T]![name];
   }
 
+  dynamic _getInternal(Type type, String name) {
+    _services[type]![name] =
+        _services[type]![name] ?? _services[type]!['${name}_f']();
+    return _services[type]![name];
+  }
+
   /// Get instances whose creation is asyncronous.
   ///
   /// Use [name] to retrieve a named instance.
@@ -172,6 +192,80 @@ class SimpleSL {
       _services[T]!.remove(name);
       _services[T]!.remove('${name}_f');
       _services[T]!.remove('${name}_fa');
+    }
+  }
+}
+
+class Injectable<T> {
+  final T as;
+  final String? name;
+  final T Function()? sync;
+  final Future<T> Function()? async;
+  final bool lazy;
+
+  const Injectable(
+      {required this.as,
+      this.name = 'default',
+      this.sync,
+      this.async,
+      this.lazy = true});
+}
+
+class Inject {
+  final String? instanceName;
+
+  const Inject({this.instanceName = 'default'});
+}
+
+extension AnnotationProcessor on SimpleSL {
+  void registerAnnotated(Type type) {
+    ClassMirror classMirror = reflectClass(type);
+
+    if (classMirror.metadata.isNotEmpty) {
+      var injectables = classMirror.metadata
+          .where((metadata) => metadata.reflectee is Injectable)
+          .map((metadata) => metadata.reflectee as Injectable)
+          .toList();
+
+//      for (var metadata in classMirror.metadata) {
+      //if (metadata.reflectee is Injectable) {
+      for (var reflectee in injectables) {
+        //var reflectee = metadata.reflectee as Injectable;
+        if (reflectee.sync == null && reflectee.async == null) {
+          var constructorMirror = (classMirror
+              .declarations[Symbol(type.toString())]! as MethodMirror);
+
+          var orderedParameters = <dynamic>[];
+          var namedParameters = <Symbol, dynamic>{};
+          for (var parameterMirror in constructorMirror.parameters) {
+            for (var metaParameter in parameterMirror.metadata) {
+              if (metaParameter.reflectee is Inject) {
+                var meta = metaParameter.reflectee as Inject;
+                if (parameterMirror.isNamed) {
+                  namedParameters[
+                          Symbol(parameterMirror.simpleName.toString())] =
+                      _getInternal(parameterMirror.type.reflectedType,
+                          meta.instanceName!);
+                } else {
+                  orderedParameters.add(_getInternal(
+                      parameterMirror.type.reflectedType, meta.instanceName!));
+                }
+              }
+            }
+          }
+          var instanceMirror = classMirror.newInstance(
+              Symbol(''), orderedParameters, namedParameters);
+          _registerInstance(
+              reflectee.as, reflectee.name!, instanceMirror.reflectee);
+        } else {
+          _registerItern(
+              reflectee.as, reflectee.name!, reflectee.sync!, reflectee.lazy);
+        }
+      }
+      //}
+      //}
+    } else {
+      throw BadStateException('Class $type must be annotated as @Injectable');
     }
   }
 }
