@@ -197,14 +197,14 @@ class SimpleSL {
 }
 
 class Injectable<T> {
-  final T as;
+  final T? as;
   final String? name;
   final T Function()? sync;
   final Future<T> Function()? async;
   final bool lazy;
 
   const Injectable(
-      {required this.as,
+      {this.as,
       this.name = 'default',
       this.sync,
       this.async,
@@ -222,50 +222,70 @@ extension AnnotationProcessor on SimpleSL {
     ClassMirror classMirror = reflectClass(type);
 
     if (classMirror.metadata.isNotEmpty) {
+      // Select all occurrences of Injectable annotation
       var injectables = classMirror.metadata
           .where((metadata) => metadata.reflectee is Injectable)
           .map((metadata) => metadata.reflectee as Injectable)
           .toList();
 
-//      for (var metadata in classMirror.metadata) {
-      //if (metadata.reflectee is Injectable) {
-      for (var reflectee in injectables) {
-        //var reflectee = metadata.reflectee as Injectable;
-        if (reflectee.sync == null && reflectee.async == null) {
+      for (var injectable in injectables) {
+        // If Injectable doesnt have creation functions annoted, then it will be
+        // created at this time by reflection using default contructor.
+        if (injectable.sync == null && injectable.async == null) {
+          //Get the default constructor mirror
           var constructorMirror = (classMirror
               .declarations[Symbol(type.toString())]! as MethodMirror);
 
+          //Auxiliary variables to store constructor parameters [ordered and named]
           var orderedParameters = <dynamic>[];
           var namedParameters = <Symbol, dynamic>{};
-          for (var parameterMirror in constructorMirror.parameters) {
-            for (var metaParameter in parameterMirror.metadata) {
-              if (metaParameter.reflectee is Inject) {
-                var meta = metaParameter.reflectee as Inject;
-                if (parameterMirror.isNamed) {
-                  namedParameters[
-                          Symbol(parameterMirror.simpleName.toString())] =
-                      _getInternal(parameterMirror.type.reflectedType,
-                          meta.instanceName!);
-                } else {
-                  orderedParameters.add(_getInternal(
-                      parameterMirror.type.reflectedType, meta.instanceName!));
-                }
-              }
+
+          //Get all parameters
+          List<Map<String, dynamic>> parameters =
+              _getAllParameters(constructorMirror);
+
+          for (var parameter in parameters) {
+            Inject? inject = parameter['inject'];
+            var value = inject != null
+                ? _getInternal(
+                    parameter['type'].reflectedType, inject.instanceName!)
+                : parameter['defaultValue']?.reflectee;
+            if (parameter['isNamed']) {
+              namedParameters[parameter['simpleName']] = value;
+            } else {
+              orderedParameters.add(value);
             }
           }
+
           var instanceMirror = classMirror.newInstance(
               Symbol(''), orderedParameters, namedParameters);
-          _registerInstance(
-              reflectee.as, reflectee.name!, instanceMirror.reflectee);
+          _registerInstance(injectable.as ?? type, injectable.name!,
+              instanceMirror.reflectee);
         } else {
-          _registerItern(
-              reflectee.as, reflectee.name!, reflectee.sync!, reflectee.lazy);
+          _registerItern(injectable.as ?? type, injectable.name!,
+              injectable.sync!, injectable.lazy);
         }
       }
-      //}
-      //}
     } else {
       throw BadStateException('Class $type must be annotated as @Injectable');
     }
   }
+}
+
+List<Map<String, dynamic>> _getAllParameters(MethodMirror constructorMirror) {
+  var parameters = constructorMirror.parameters.map((element) {
+    var injects = element.metadata
+        .where((element) => element.reflectee is Inject)
+        .toList();
+    var parameter = <String, dynamic>{
+      'isNamed': element.isNamed,
+      'defaultValue': element.hasDefaultValue ? element.defaultValue : null,
+      'simpleName': element.simpleName,
+      'type': element.type,
+      'inject': injects.isNotEmpty ? injects.first.reflectee : null
+    };
+
+    return parameter;
+  }).toList();
+  return parameters;
 }

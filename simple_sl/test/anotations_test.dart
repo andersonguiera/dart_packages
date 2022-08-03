@@ -27,11 +27,21 @@ class Person implements Animal {
   }
 }
 
-@Injectable(as: UseAnimal)
+@Injectable()
 class UseAnimal {
   final Animal animal;
+  final String message;
+  final String injectedMessage;
 
-  const UseAnimal(@Inject(instanceName: 'person') this.animal);
+  const UseAnimal(@Inject(instanceName: 'person') this.animal,
+      {this.message = 'message to you.',
+      @Inject(instanceName: 'mensagem') this.injectedMessage =
+          'fail to inject'});
+
+  void show() {
+    print(message);
+    print(injectedMessage);
+  }
 }
 
 void main() {
@@ -101,6 +111,8 @@ void main() {
 
       final stopwatch = Stopwatch()..start();
 
+      serviceLocator.register<String>(() => 'uma mensagem personalizada.',
+          name: 'mensagem');
       serviceLocator.registerAnnotated(Dog);
       serviceLocator.registerAnnotated(Person);
       serviceLocator.registerAnnotated(UseAnimal);
@@ -111,6 +123,7 @@ void main() {
       expect(stopwatch.elapsed.inMilliseconds, lessThan(50));
       //animal.talk();
       useAnimal.animal.talk();
+      useAnimal.show();
 
 /*       expect(enUSGreeting, 'Hello World!');
       expect(ptBRGreeting, 'Olá Mundo!'); */
