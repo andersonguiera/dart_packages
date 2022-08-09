@@ -1,132 +1,111 @@
-import 'dart:mirrors';
-
 import 'package:simple_sl/simple_sl_annotations.dart';
 import 'package:test/test.dart';
 
-abstract class Animal {
-  void talk();
-}
-
-Animal getDog() => Dog(name: 'Rex');
-
-@Injectable(as: Animal, sync: getDog)
-class Dog implements Animal {
-  final String name;
-  const Dog({required this.name});
-  @override
-  void talk() {
-    print('Auf-Auf, Im $name');
-  }
-}
-
-@Injectable(as: Animal, name: 'person')
-class Person implements Animal {
-  @override
-  void talk() {
-    print('Hi there!');
-  }
-}
-
-@Injectable()
-class UseAnimal {
-  final Animal animal;
+abstract class Message {
   final String message;
-  final String injectedMessage;
+  const Message(this.message);
+}
 
-  const UseAnimal(@Inject(instanceName: 'person') this.animal,
-      {this.message = 'message to you.',
-      @Inject(instanceName: 'mensagem') this.injectedMessage =
-          'fail to inject'});
+EMail getEmail() => EMail('Mail this');
+WhatsUP getWhatsUP() => WhatsUP('WhatsUP this');
+Future<SharedChanel> getSharedChanel() async =>
+    SharedChanel(chanelName: await getChanelA(), message: 'SharedMessage this');
+Future<SharedChanelEager> getSharedChanelEager() async => SharedChanelEager(
+      chanelName: await getChanelB(),
+      message: 'SharedMessageEager this',
+    );
+Future<String> getChanelA() async => await Future<String>.delayed(
+      Duration(milliseconds: 10),
+      (() => 'Chanel A'),
+    );
+Future<String> getChanelB() async => await Future<String>.delayed(
+      Duration(milliseconds: 10),
+      (() => 'Chanel B'),
+    );
 
-  void show() {
-    print(message);
-    print(injectedMessage);
-  }
+@Injectable(as: Message, sync: getEmail)
+class EMail extends Message {
+  EMail(String message) : super('Emailing: $message');
+}
+
+@Injectable(as: Message, name: 'whatsUp', sync: getWhatsUP)
+class WhatsUP extends Message {
+  WhatsUP(String message) : super('WhatsUP message: $message');
+}
+
+@Injectable(as: Message, name: 'sharedChannel', async: getSharedChanel)
+class SharedChanel extends Message {
+  final String chanelName;
+  SharedChanel({required this.chanelName, String? message})
+      : super(
+          'Message: ${message ?? 'no message'} sent on chanel $chanelName.',
+        );
+}
+
+@Injectable(
+  as: Message,
+  name: 'sharedChannelEager',
+  async: getSharedChanelEager,
+  lazy: false,
+)
+class SharedChanelEager extends Message {
+  final String chanelName;
+  SharedChanelEager({required this.chanelName, String? message})
+      : super(
+          'Message: ${message ?? 'no message'} sent on chanel $chanelName.',
+        );
 }
 
 void main() {
-  group('A group of tests', () {
+  group('Group tests to register anotated ', () {
     final serviceLocator = SimpleSL.instance;
 
-    setUp(() {
+/*     setUp(() {
       // Additional setup goes here.
-    });
+    }); */
 
-    test('Register sync creations', () {
-/*       ClassMirror classMirror = reflectClass(Dog);
-
-      print(classMirror.declarations.entries.toString());
-      var instanceMirror =
-          classMirror.newInstance(Symbol(''), [], {Symbol('name'): 'To-to'});
-      (instanceMirror.reflectee as Dog).talk(); */
-
-/*       for (var metadata in classMirror.metadata) {
-        if (metadata.reflectee is Injectable) {
-          print('a');
-          print(metadata.reflectee.name);
-          print(metadata.reflectee.as.toString());
-          print(classMirror.declarations.entries.toString());
-        }
-      }
-
-      (classMirror as Dog).talk();
- */
+    test('Register sync and lazy creations', () {
       final stopwatch = Stopwatch()..start();
 
-      //serviceLocator.registerAnnotated(Dog);
-      serviceLocator.registerAnnotated(Person);
+      serviceLocator.registerAnnotated(EMail);
+      serviceLocator.registerAnnotated(WhatsUP);
 
-      //var animal = serviceLocator.get<Animal>();
-      var animalPerson = serviceLocator.get<Animal>(name: 'person');
+      expect(stopwatch.elapsed.inMilliseconds, lessThan(10));
 
-      expect(stopwatch.elapsed.inMilliseconds, lessThan(50));
-      //animal.talk();
-      animalPerson.talk();
-
-/*       expect(enUSGreeting, 'Hello World!');
-      expect(ptBRGreeting, 'Olá Mundo!'); */
+      var email = serviceLocator.get<Message>();
+      var whatsUp = serviceLocator.get<Message>(name: 'whatsUp');
+      expect(email.message, 'Emailing: Mail this');
+      expect(whatsUp.message, 'WhatsUP message: WhatsUP this');
     });
 
-    test('Register inject', () {
-/*       ClassMirror classMirror = reflectClass(UseAnimal);
-      var methodMirror =
-          (classMirror.declarations[Symbol('UseAnimal')]! as MethodMirror);
-
-      for (var parameterMirror in methodMirror.parameters) {
-        print(parameterMirror.metadata);
-      }
-      print(methodMirror.parameters); */
-
-/*       for (var metadata in classMirror.metadata) {
-        if (metadata.reflectee is Injectable) {
-          print('a');
-          print(metadata.reflectee.name);
-          print(metadata.reflectee.as.toString());
-          print(classMirror.declarations.entries.toString());
-        }
-      }
-
-      (classMirror as Dog).talk();
- */
-
+    test('Register async and lazy creations', () async {
       final stopwatch = Stopwatch()..start();
 
-      serviceLocator.register<String>(() => 'uma mensagem personalizada.',
-          name: 'mensagem');
-      serviceLocator.registerAnnotated(Dog);
-      serviceLocator.registerAnnotated(Person);
-      serviceLocator.registerAnnotated(UseAnimal);
+      serviceLocator.registerAnnotated(SharedChanel);
 
-      //var animal = serviceLocator.get<Animal>();
-      var useAnimal = serviceLocator.get<UseAnimal>();
+      expect(stopwatch.elapsed.inMilliseconds, lessThan(10));
 
-      expect(stopwatch.elapsed.inMilliseconds, lessThan(50));
-      //animal.talk();
-      useAnimal.animal.talk();
-      useAnimal.show();
+      var sharedMessage =
+          await serviceLocator.getAsync<Message>(name: 'sharedChannel');
+      expect(
+        sharedMessage.message,
+        'Message: SharedMessage this sent on chanel Chanel A.',
+      );
+    });
 
-/*       expect(enUSGreeting, 'Hello World!');
-      expect(ptBRGreeting, 'Olá Mundo!'); */
+    test('Register async and lazy=false creations', () async {
+      final stopwatch = Stopwatch()..start();
+
+      await serviceLocator.registerAnnotated(SharedChanelEager);
+
+      expect(stopwatch.elapsed.inMilliseconds, greaterThanOrEqualTo(10));
+
+      var sharedMessage =
+          await serviceLocator.getAsync<Message>(name: 'sharedChannelEager');
+      expect(
+        sharedMessage.message,
+        'Message: SharedMessageEager this sent on chanel Chanel B.',
+      );
     });
   });
 }

@@ -27,6 +27,7 @@ class SimpleSL {
   /// Give an unique instace of SimpleSL
   static SimpleSL get instance {
     _instance ??= SimpleSL._();
+
     return _instance!;
   }
 
@@ -52,8 +53,11 @@ class SimpleSL {
   ///   lazy: false);
   ///
   /// ```
-  void register<T>(T Function() f,
-      {bool lazy = true, String name = 'default'}) {
+  void register<T>(
+    T Function() f, {
+    bool lazy = true,
+    String name = 'default',
+  }) {
 //    _services[T] = {...?_services[T], name: lazy ? null : f(), '${name}_f': f};
     _registerItern(T, name, f, lazy);
   }
@@ -62,7 +66,7 @@ class SimpleSL {
     _services[type] = {
       ...?_services[type],
       name: lazy ? null : f(),
-      '${name}_f': f
+      '${name}_f': f,
     };
   }
 
@@ -89,10 +93,22 @@ class SimpleSL {
   ///   lazy = false,
   ///   name: 'dataDirectory');
   /// ```
-  Future<void> registerAsync<T>(Future<T> Function() fa,
-      {bool lazy = true, String name = 'default'}) async {
-    _services[T] = {
-      ...?_services[T],
+  Future<void> registerAsync<T>(
+    Future<T> Function() fa, {
+    bool lazy = true,
+    String name = 'default',
+  }) async {
+    await _registerInterAsync(T, name, fa, lazy);
+  }
+
+  Future<void> _registerInterAsync(
+    Type type,
+    String name,
+    dynamic Function() fa,
+    bool lazy,
+  ) async {
+    _services[type] = {
+      ...?_services[type],
       name: lazy ? null : await fa(),
       '${name}_fa': fa,
     };
@@ -129,12 +145,14 @@ class SimpleSL {
     }
 
     _services[T]![name] = _services[T]![name] ?? _services[T]!['${name}_f']();
+
     return _services[T]![name];
   }
 
   dynamic _getInternal(Type type, String name) {
     _services[type]![name] =
         _services[type]![name] ?? _services[type]!['${name}_f']();
+
     return _services[type]![name];
   }
 
@@ -166,6 +184,7 @@ class SimpleSL {
 
     _services[T]![name] =
         _services[T]![name] ?? await _services[T]!['${name}_fa']();
+
     return _services[T]![name];
   }
 
@@ -203,12 +222,13 @@ class Injectable<T> {
   final Future<T> Function()? async;
   final bool lazy;
 
-  const Injectable(
-      {this.as,
-      this.name = 'default',
-      this.sync,
-      this.async,
-      this.lazy = true});
+  const Injectable({
+    this.as,
+    this.name = 'default',
+    this.sync,
+    this.async,
+    this.lazy = true,
+  });
 }
 
 class Inject {
@@ -218,7 +238,7 @@ class Inject {
 }
 
 extension AnnotationProcessor on SimpleSL {
-  void registerAnnotated(Type type) {
+  Future<void> registerAnnotated(Type type) async {
     ClassMirror classMirror = reflectClass(type);
 
     if (classMirror.metadata.isNotEmpty) {
@@ -248,7 +268,9 @@ extension AnnotationProcessor on SimpleSL {
             Inject? inject = parameter['inject'];
             var value = inject != null
                 ? _getInternal(
-                    parameter['type'].reflectedType, inject.instanceName!)
+                    parameter['type'].reflectedType,
+                    inject.instanceName!,
+                  )
                 : parameter['defaultValue']?.reflectee;
             if (parameter['isNamed']) {
               namedParameters[parameter['simpleName']] = value;
@@ -258,34 +280,65 @@ extension AnnotationProcessor on SimpleSL {
           }
 
           var instanceMirror = classMirror.newInstance(
-              Symbol(''), orderedParameters, namedParameters);
-          _registerInstance(injectable.as ?? type, injectable.name!,
-              instanceMirror.reflectee);
+            Symbol(''),
+            orderedParameters,
+            namedParameters,
+          );
+          _registerInstance(
+            injectable.as ?? type,
+            injectable.name!,
+            instanceMirror.reflectee,
+          );
         } else {
-          _registerItern(injectable.as ?? type, injectable.name!,
-              injectable.sync!, injectable.lazy);
+          await _registerInjectable(type, injectable);
         }
       }
     } else {
       throw BadStateException('Class $type must be annotated as @Injectable');
     }
   }
-}
 
-List<Map<String, dynamic>> _getAllParameters(MethodMirror constructorMirror) {
-  var parameters = constructorMirror.parameters.map((element) {
-    var injects = element.metadata
-        .where((element) => element.reflectee is Inject)
-        .toList();
-    var parameter = <String, dynamic>{
-      'isNamed': element.isNamed,
-      'defaultValue': element.hasDefaultValue ? element.defaultValue : null,
-      'simpleName': element.simpleName,
-      'type': element.type,
-      'inject': injects.isNotEmpty ? injects.first.reflectee : null
-    };
+  //Rgister an injectable anotated class. if injectable.as is null, type will be
+  //usede to register.
+  Future<void> _registerInjectable(Type type, Injectable injectable) async {
+    if (injectable.async != null) {
+      await _registerInterAsync(
+        injectable.as ?? type,
+        injectable.name!,
+        injectable.async!,
+        injectable.lazy,
+      );
+    } else if (injectable.sync != null) {
+      _registerItern(
+        injectable.as ?? type,
+        injectable.name!,
+        injectable.sync!,
+        injectable.lazy,
+      );
+    } else {
+      throw BadStateException(
+        'Can cont register $type as @Injectable: Must have sync or async '
+        'constructor functions',
+      );
+    }
+  }
 
-    return parameter;
-  }).toList();
-  return parameters;
+  List<Map<String, dynamic>> _getAllParameters(MethodMirror constructorMirror) {
+    var parameters = constructorMirror.parameters.map((element) {
+      var injects = element.metadata
+          .where((element) => element.reflectee is Inject)
+          .toList();
+      var parameter = <String, dynamic>{
+        'isNamed': element.isNamed,
+        'defaultValue': element.hasDefaultValue ? element.defaultValue : null,
+        'simpleName': element.simpleName,
+        'type': element.type,
+        'inject': injects.isNotEmpty ? injects.first.reflectee : null,
+      };
+
+      return parameter;
+    }).toList();
+
+    return parameters;
+  }
 }

@@ -18,11 +18,11 @@ class File implements Output {
   }
 }
 
-class Animal {
+abstract class Animal {
   final Output method;
 
   Animal(this.method);
-  void talk() {}
+  void talk();
 }
 
 class Person extends Animal {
